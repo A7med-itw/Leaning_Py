@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Buildings Dashboard</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <header>
+    <h1>Buildings Dashboard</h1>
+    <p class="sub">Demo dataset — mock API</p>
+  </header>
+
+  <section class="cards" id="cards"></section>
+
+  <section class="controls">
+    <label>
+      Governorate
+      <select id="f-gov"><option value="">All</option></select>
+    </label>
+    <label>
+      Type
+      <select id="f-type"><option value="">All</option></select>
+    </label>
+    <button id="f-reset">Reset</button>
+  </section>
+
+  <section>
+    <table id="tbl">
+      <thead>
+        <tr>
+          <th>#</th><th>Building No</th><th>Governorate</th><th>Wilayat</th>
+          <th>Type</th><th>Units</th><th>Lat</th><th>Lng</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+    <p class="empty" id="empty" hidden>No buildings match the filter.</p>
+  </section>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
