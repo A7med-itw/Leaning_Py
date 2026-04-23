@@ -1,0 +1,346 @@
+From e1b18fc7631bdd5b4172fa4b3f1225a59d358983 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Wed, 22 Apr 2026 09:24:39 +0000
+Subject: [PATCH] Scaffold buildings dashboard with FastAPI and vanilla
+ frontend
+
+Adds a self-contained demo: FastAPI backend serving mock building data
+(/api/buildings, /api/stats) and a static HTML/JS dashboard with summary
+cards, governorate/type filters, and a results table.
+---
+ .gitignore            |  6 ++++
+ app/__init__.py       |  0
+ app/data.py           | 16 +++++++++++
+ app/main.py           | 51 +++++++++++++++++++++++++++++++++
+ app/models.py         | 19 +++++++++++++
+ app/static/app.js     | 65 +++++++++++++++++++++++++++++++++++++++++++
+ app/static/index.html | 44 +++++++++++++++++++++++++++++
+ app/static/styles.css | 60 +++++++++++++++++++++++++++++++++++++++
+ requirements.txt      |  2 ++
+ 9 files changed, 263 insertions(+)
+ create mode 100644 .gitignore
+ create mode 100644 app/__init__.py
+ create mode 100644 app/data.py
+ create mode 100644 app/main.py
+ create mode 100644 app/models.py
+ create mode 100644 app/static/app.js
+ create mode 100644 app/static/index.html
+ create mode 100644 app/static/styles.css
+ create mode 100644 requirements.txt
+
+diff --git a/.gitignore b/.gitignore
+new file mode 100644
+index 0000000..d504e46
+--- /dev/null
++++ b/.gitignore
+@@ -0,0 +1,6 @@
++__pycache__/
++*.pyc
++.venv/
++venv/
++.env
++.DS_Store
+diff --git a/app/__init__.py b/app/__init__.py
+new file mode 100644
+index 0000000..e69de29
+diff --git a/app/data.py b/app/data.py
+new file mode 100644
+index 0000000..9d6d8a7
+--- /dev/null
++++ b/app/data.py
+@@ -0,0 +1,16 @@
++from .models import Building
++
++BUILDINGS: list[Building] = [
++    Building(id=1,  building_no="B-0001", governorate="Muscat",    wilayat="Muttrah",   type="Residential", units=12, lat=23.6145, lng=58.5923),
++    Building(id=2,  building_no="B-0002", governorate="Muscat",    wilayat="Bawshar",   type="Commercial",  units=4,  lat=23.5859, lng=58.4059),
++    Building(id=3,  building_no="B-0003", governorate="Muscat",    wilayat="Seeb",      type="Residential", units=24, lat=23.6703, lng=58.1891),
++    Building(id=4,  building_no="B-0004", governorate="Dhofar",    wilayat="Salalah",   type="Mixed",       units=18, lat=17.0194, lng=54.0897),
++    Building(id=5,  building_no="B-0005", governorate="Dhofar",    wilayat="Taqah",     type="Residential", units=6,  lat=17.0389, lng=54.4017),
++    Building(id=6,  building_no="B-0006", governorate="Al Batinah", wilayat="Sohar",    type="Industrial",  units=1,  lat=24.3477, lng=56.7298),
++    Building(id=7,  building_no="B-0007", governorate="Al Batinah", wilayat="Barka",    type="Residential", units=10, lat=23.6782, lng=57.8890),
++    Building(id=8,  building_no="B-0008", governorate="Al Dakhiliyah", wilayat="Nizwa", type="Commercial",  units=3,  lat=22.9333, lng=57.5333),
++    Building(id=9,  building_no="B-0009", governorate="Al Dakhiliyah", wilayat="Bahla", type="Residential", units=8,  lat=22.9833, lng=57.3000),
++    Building(id=10, building_no="B-0010", governorate="Musandam",  wilayat="Khasab",    type="Residential", units=5,  lat=26.1794, lng=56.2486),
++    Building(id=11, building_no="B-0011", governorate="Al Buraimi", wilayat="Al Buraimi", type="Mixed",     units=14, lat=24.2500, lng=55.7931),
++    Building(id=12, building_no="B-0012", governorate="Al Sharqiyah", wilayat="Sur",    type="Residential", units=9,  lat=22.5667, lng=59.5289),
++]
+diff --git a/app/main.py b/app/main.py
+new file mode 100644
+index 0000000..a7e3dab
+--- /dev/null
++++ b/app/main.py
+@@ -0,0 +1,51 @@
++from collections import Counter
++from pathlib import Path
++
++from fastapi import FastAPI, HTTPException
++from fastapi.responses import FileResponse
++from fastapi.staticfiles import StaticFiles
++
++from .data import BUILDINGS
++from .models import Building, Stats
++
++STATIC_DIR = Path(__file__).parent / "static"
++
++app = FastAPI(title="Buildings Dashboard")
++
++
++@app.get("/api/buildings", response_model=list[Building])
++def list_buildings(governorate: str | None = None, type: str | None = None) -> list[Building]:
++    items = BUILDINGS
++    if governorate:
++        items = [b for b in items if b.governorate == governorate]
++    if type:
++        items = [b for b in items if b.type == type]
++    return items
++
++
++@app.get("/api/buildings/{building_id}", response_model=Building)
++def get_building(building_id: int) -> Building:
++    for b in BUILDINGS:
++        if b.id == building_id:
++            return b
++    raise HTTPException(status_code=404, detail="Building not found")
++
++
++@app.get("/api/stats", response_model=Stats)
++def stats() -> Stats:
++    by_gov = Counter(b.governorate for b in BUILDINGS)
++    by_type = Counter(b.type for b in BUILDINGS)
++    return Stats(
++        total=len(BUILDINGS),
++        total_units=sum(b.units for b in BUILDINGS),
++        by_governorate=dict(by_gov),
++        by_type=dict(by_type),
++    )
++
++
++app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
++
++
++@app.get("/")
++def index() -> FileResponse:
++    return FileResponse(STATIC_DIR / "index.html")
+diff --git a/app/models.py b/app/models.py
+new file mode 100644
+index 0000000..b1fc253
+--- /dev/null
++++ b/app/models.py
+@@ -0,0 +1,19 @@
++from pydantic import BaseModel
++
++
++class Building(BaseModel):
++    id: int
++    building_no: str
++    governorate: str
++    wilayat: str
++    type: str
++    units: int
++    lat: float
++    lng: float
++
++
++class Stats(BaseModel):
++    total: int
++    total_units: int
++    by_governorate: dict[str, int]
++    by_type: dict[str, int]
+diff --git a/app/static/app.js b/app/static/app.js
+new file mode 100644
+index 0000000..3275d34
+--- /dev/null
++++ b/app/static/app.js
+@@ -0,0 +1,65 @@
++const state = { buildings: [], governorate: "", type: "" };
++
++async function load() {
++  const [bRes, sRes] = await Promise.all([
++    fetch("/api/buildings"),
++    fetch("/api/stats"),
++  ]);
++  state.buildings = await bRes.json();
++  const stats = await sRes.json();
++  renderCards(stats);
++  populateFilters(stats);
++  renderTable();
++}
++
++function renderCards(stats) {
++  const topGov = Object.entries(stats.by_governorate)
++    .sort((a, b) => b[1] - a[1]).slice(0, 3)
++    .map(([k, v]) => `<li>${k}: ${v}</li>`).join("");
++  const topType = Object.entries(stats.by_type)
++    .sort((a, b) => b[1] - a[1])
++    .map(([k, v]) => `<li>${k}: ${v}</li>`).join("");
++  document.getElementById("cards").innerHTML = `
++    <div class="card"><div class="label">Total Buildings</div><div class="value">${stats.total}</div></div>
++    <div class="card"><div class="label">Total Units</div><div class="value">${stats.total_units}</div></div>
++    <div class="card"><div class="label">Top Governorates</div><ul>${topGov}</ul></div>
++    <div class="card"><div class="label">By Type</div><ul>${topType}</ul></div>
++  `;
++}
++
++function populateFilters(stats) {
++  const gov = document.getElementById("f-gov");
++  const typ = document.getElementById("f-type");
++  for (const k of Object.keys(stats.by_governorate).sort()) {
++    gov.insertAdjacentHTML("beforeend", `<option value="${k}">${k}</option>`);
++  }
++  for (const k of Object.keys(stats.by_type).sort()) {
++    typ.insertAdjacentHTML("beforeend", `<option value="${k}">${k}</option>`);
++  }
++  gov.addEventListener("change", e => { state.governorate = e.target.value; renderTable(); });
++  typ.addEventListener("change", e => { state.type = e.target.value; renderTable(); });
++  document.getElementById("f-reset").addEventListener("click", () => {
++    state.governorate = ""; state.type = "";
++    gov.value = ""; typ.value = "";
++    renderTable();
++  });
++}
++
++function renderTable() {
++  const rows = state.buildings.filter(b =>
++    (!state.governorate || b.governorate === state.governorate) &&
++    (!state.type || b.type === state.type)
++  );
++  const tbody = document.querySelector("#tbl tbody");
++  tbody.innerHTML = rows.map(b => `
++    <tr>
++      <td>${b.id}</td><td>${b.building_no}</td><td>${b.governorate}</td>
++      <td>${b.wilayat}</td><td>${b.type}</td><td>${b.units}</td>
++      <td>${b.lat.toFixed(4)}</td><td>${b.lng.toFixed(4)}</td>
++    </tr>
++  `).join("");
++  document.getElementById("empty").hidden = rows.length > 0;
++  document.getElementById("tbl").hidden = rows.length === 0;
++}
++
++load();
+diff --git a/app/static/index.html b/app/static/index.html
+new file mode 100644
+index 0000000..580d680
+--- /dev/null
++++ b/app/static/index.html
+@@ -0,0 +1,44 @@
++<!doctype html>
++<html lang="en">
++<head>
++  <meta charset="utf-8" />
++  <meta name="viewport" content="width=device-width, initial-scale=1" />
++  <title>Buildings Dashboard</title>
++  <link rel="stylesheet" href="/static/styles.css" />
++</head>
++<body>
++  <header>
++    <h1>Buildings Dashboard</h1>
++    <p class="sub">Demo dataset — mock API</p>
++  </header>
++
++  <section class="cards" id="cards"></section>
++
++  <section class="controls">
++    <label>
++      Governorate
++      <select id="f-gov"><option value="">All</option></select>
++    </label>
++    <label>
++      Type
++      <select id="f-type"><option value="">All</option></select>
++    </label>
++    <button id="f-reset">Reset</button>
++  </section>
++
++  <section>
++    <table id="tbl">
++      <thead>
++        <tr>
++          <th>#</th><th>Building No</th><th>Governorate</th><th>Wilayat</th>
++          <th>Type</th><th>Units</th><th>Lat</th><th>Lng</th>
++        </tr>
++      </thead>
++      <tbody></tbody>
++    </table>
++    <p class="empty" id="empty" hidden>No buildings match the filter.</p>
++  </section>
++
++  <script src="/static/app.js"></script>
++</body>
++</html>
+diff --git a/app/static/styles.css b/app/static/styles.css
+new file mode 100644
+index 0000000..f07ad59
+--- /dev/null
++++ b/app/static/styles.css
+@@ -0,0 +1,60 @@
++* { box-sizing: border-box; }
++body {
++  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
++  margin: 0;
++  background: #f6f7f9;
++  color: #1f2328;
++}
++header {
++  padding: 24px 32px;
++  background: #0f172a;
++  color: #fff;
++}
++header h1 { margin: 0; font-size: 1.4rem; }
++header .sub { margin: 4px 0 0; opacity: .7; font-size: .85rem; }
++
++.cards {
++  display: grid;
++  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
++  gap: 12px;
++  padding: 20px 32px 0;
++}
++.card {
++  background: #fff;
++  border: 1px solid #e5e7eb;
++  border-radius: 8px;
++  padding: 14px 16px;
++}
++.card .label { font-size: .75rem; color: #64748b; text-transform: uppercase; letter-spacing: .04em; }
++.card .value { font-size: 1.6rem; font-weight: 600; margin-top: 4px; }
++.card ul { margin: 8px 0 0; padding-left: 16px; font-size: .85rem; color: #334155; }
++
++.controls {
++  display: flex;
++  gap: 16px;
++  align-items: flex-end;
++  padding: 16px 32px;
++}
++.controls label { display: flex; flex-direction: column; font-size: .8rem; color: #475569; }
++.controls select {
++  margin-top: 4px; padding: 6px 8px; border-radius: 6px; border: 1px solid #cbd5e1; background: #fff;
++}
++.controls button {
++  padding: 7px 12px; border-radius: 6px; border: 1px solid #cbd5e1; background: #fff; cursor: pointer;
++}
++.controls button:hover { background: #f1f5f9; }
++
++table {
++  width: calc(100% - 64px);
++  margin: 0 32px 32px;
++  border-collapse: collapse;
++  background: #fff;
++  border: 1px solid #e5e7eb;
++  border-radius: 8px;
++  overflow: hidden;
++  font-size: .9rem;
++}
++th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid #eef2f6; }
++th { background: #f8fafc; font-weight: 600; color: #475569; font-size: .78rem; text-transform: uppercase; letter-spacing: .03em; }
++tbody tr:hover { background: #f8fafc; }
++.empty { text-align: center; color: #64748b; padding: 24px; }
+diff --git a/requirements.txt b/requirements.txt
+new file mode 100644
+index 0000000..ba76e7d
+--- /dev/null
++++ b/requirements.txt
+@@ -0,0 +1,2 @@
++fastapi==0.115.0
++uvicorn[standard]==0.30.6
+-- 
+2.43.0
